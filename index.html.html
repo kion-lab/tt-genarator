@@ -1,0 +1,491 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TimeTable Generator</title>
+    <style>
+        *,
+        *::before,
+        *::after {
+            box-sizing: border-box;
+        }
+
+        :root {
+            --primary-color: #3b82c4;
+            --bg-color: #f4f3f9;
+            --border-color: #ddd;
+            --slot-height: 2.4svh;
+        }
+
+        body {
+            font-family: sans-serif;
+            background-color: var(--bg-color);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            height: 100dvh;
+            margin: 0;
+            user-select: none;
+            -webkit-user-select: none;
+            overflow: hidden;
+            overscroll-behavior: none;
+        }
+
+        .container {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            width: fit-content;
+            max-width: 100%;
+            box-sizing: border-box;
+        }
+
+        .controls {
+            margin-bottom: 6px;
+            display: flex;
+            justify-content: start;
+            align-items: center;
+            gap: 10px;
+        }
+
+        button {
+            padding: 5px 8px;
+            font-size: 15px;
+            background-color: var(--primary-color);
+            color: white;
+            border: none;
+            border-radius: 5px;
+        }
+
+        button:active {
+            opacity: 0.8;
+        }
+
+        #reset-btn {
+            background-color: #e84566;
+        }
+
+        .options {
+            margin-top: 0;
+            font-size: 14px;
+            display: inline-flex;
+            justify-content: center;
+            align-items: center;
+            gap: 6px;
+            line-height: 1;
+        }
+
+        .options input {
+            margin: 0;
+            padding: 0;
+            vertical-align: middle;
+            transform: scale(1.4);
+            transform-origin: center;
+            accent-color: var(--primary-color);
+        }
+
+        #output-text {
+            width: 100%;
+            height: 50px;
+            margin-top: 8px;
+            margin-bottom: 10px;
+            padding: 6px;
+            box-sizing: border-box;
+            border: 1px solid var(--border-color);
+            font-size: 13px;
+            resize: none;
+        }
+
+        .tables-wrapper {
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+        }
+
+        .timetable {
+            touch-action: none;
+            width: 100px;
+            padding-left: 35px;
+            box-sizing: content-box;
+        }
+
+        .slot {
+            position: relative;
+            border-bottom: 1px solid #ddd;
+            border-left: 1px solid var(--border-color);
+            border-right: 1px solid var(--border-color);
+            height: var(--slot-height);
+            display: flex;
+        }
+
+        .slot.border-hour::before {
+            content: "";
+            position: absolute;
+            top: -1px;
+            height: 2px;
+            left: -1px;
+            right: -1px;
+            background-color: #bbb;
+            z-index: 10;
+        }
+
+        .slot.border-hourColumnEnd {
+            top: -1px;
+            border-top: 2px solid #bbb;
+            border-bottom: none;
+            border-left: none;
+            border-right: none;
+            height: 0;
+            background: transparent;
+        }
+
+        .time-label {
+            position: absolute;
+            top: -10px;
+            left: -50px;
+            width: 45px;
+            text-align: right;
+            font-size: 11px;
+            color: #666;
+            pointer-events: none;
+        }
+
+        .cell {
+            flex: 1;
+            height: 100%;
+            background-color: transparent;
+        }
+
+        .cell.selected {
+            background-color: var(--primary-color);
+        }
+
+        @media (hover: hover) {
+            .cell:hover:not(.selected) {
+                background-color: #e3f2fd;
+            }
+        }
+
+        .switch-container {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 14px;
+        }
+
+        .switch {
+            position: relative;
+            display: inline-block;
+            width: 50px;
+            height: 24px;
+        }
+
+        .switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #ccc;
+            transition: .3s;
+            border-radius: 24px;
+        }
+
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 18px;
+            width: 18px;
+            left: 3px;
+            bottom: 3px;
+            background-color: white;
+            transition: .3s;
+            border-radius: 50%;
+        }
+
+        input:checked+.slider {
+            background-color: var(--primary-color);
+        }
+
+        input:checked+.slider:before {
+            transform: translateX(26px);
+        }
+
+        #interval-switch:checked+.slider:before {
+            transform: translateX(26px);
+        }
+
+        .toast {
+            position: fixed;
+            bottom: -60px;
+            left: 50%;
+            transform: translateX(-50%);
+            background-color: #333333;
+            color: #ffffff;
+            padding: 12px 24px;
+            border-radius: 25px;
+            font-size: 14px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+            z-index: 10000;
+            transition: bottom 0.3s ease, opacity 0.3s ease;
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .toast.show {
+            bottom: 30px;
+            opacity: 1;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="container">
+        <div class="controls">
+            <button id="copy-btn">テキストをコピー</button>
+            <button id="reset-btn" style="background-color: #e74c3c;">リセット</button>
+            <div class="switch-container">
+                <span>5分</span>
+                <label class="switch">
+                    <input type="checkbox" id="interval-switch">
+                    <span class="slider"></span>
+                </label>
+                <span>10分</span>
+            </div>
+            <label class="options">
+                <input type="checkbox" id="use-numbers-chk"> 番号を振る
+            </label>
+        </div>
+        <textarea id="output-text" readonly placeholder="タイムテーブルをドラッグして選択"></textarea>
+
+        <div class="tables-wrapper">
+            <div id="timetable-left" class="timetable"></div>
+            <div id="timetable-center" class="timetable"></div>
+            <div id="timetable-right" class="timetable"></div>
+        </div>
+    </div>
+
+    <script>
+        const startHour = 9;
+        const endHour = 23;
+        let interval = 10;
+        const intervalSwitch = document.getElementById('interval-switch');
+        const resetBtn = document.getElementById('reset-btn');
+        const splitHour = 16;
+        const circleNumbers = ['①', '②', '③', '④', '⑤', '⑥', '⑦', '⑧', '⑨', '⑩', '⑪', '⑫', '⑬', '⑭', '⑮', '⑯', '⑰', '⑱', '⑲', '⑳'];
+        const useNumbersChk = document.getElementById('use-numbers-chk');
+        const outputText = document.getElementById('output-text');
+        const copyBtn = document.getElementById('copy-btn');
+        const leftTable = document.getElementById('timetable-left');
+        const centerTable = document.getElementById('timetable-center');
+        const rightTable = document.getElementById('timetable-right');
+
+        let isDragging = false;
+        let dragMode = 'add';
+        let selectedIndices = new Set();
+
+        document.getElementById('interval-switch').checked = true;
+
+        function initTimetable() {
+            leftTable.innerHTML = '';
+            centerTable.innerHTML = '';
+            rightTable.innerHTML = '';
+            selectedIndices.clear();
+            updateOutput();
+
+            for (let h = startHour; h < endHour; h++) {
+                let targetTable;
+                if (h < 14) {
+                    targetTable = leftTable;
+                } else if (h < 19) {
+                    targetTable = centerTable;
+                } else {
+                    targetTable = rightTable;
+                }
+
+                for (let m = 0; m < 60; m += interval) {
+                    if (h === endHour && m > 0) break;
+
+                    const slot = document.createElement('div');
+                    slot.className = 'slot';
+
+                    if (m === 0) {
+                        slot.classList.add('border-hour');
+                    }
+
+                    const shouldShowLabel = (interval === 5) ? (m % 10 === 0) : (m % 30 === 0);
+
+                    if (shouldShowLabel) {
+                        const label = document.createElement('div');
+                        label.className = 'time-label';
+                        label.textContent = (m === 0) ? `${h}:00` : `:${m.toString().padStart(2, '0')}`;
+                        slot.appendChild(label);
+                    }
+
+                    const cell = document.createElement('div');
+                    cell.className = 'cell';
+                    const index = (h * 60 + m) / interval;
+                    cell.dataset.index = index;
+
+                    slot.appendChild(cell);
+                    targetTable.appendChild(slot);
+
+                    cell.addEventListener('mousedown', (e) => {
+                        if (e.button !== 0) return;
+                        isDragging = true;
+                        dragMode = selectedIndices.has(index) ? 'remove' : 'add';
+                        handleCellAction(cell, index);
+                        e.preventDefault();
+                    });
+                    cell.addEventListener('mouseenter', () => {
+                        if (isDragging) handleCellAction(cell, index);
+                    });
+                    cell.addEventListener('touchstart', (e) => {
+                        isDragging = true;
+                        dragMode = selectedIndices.has(index) ? 'remove' : 'add';
+                        handleCellAction(cell, index);
+                    });
+                }
+            }
+
+            const endSlotLeft = document.createElement('div');
+            endSlotLeft.className = 'slot border-hourColumnEnd';
+            const labelLeft = document.createElement('div');
+            labelLeft.className = 'time-label';
+            labelLeft.textContent = '14:00';
+            endSlotLeft.appendChild(labelLeft);
+            leftTable.appendChild(endSlotLeft);
+
+            const endSlotCenter = document.createElement('div');
+            endSlotCenter.className = 'slot border-hourColumnEnd';
+            const labelCenter = document.createElement('div');
+            labelCenter.className = 'time-label';
+            labelCenter.textContent = '19:00';
+            endSlotCenter.appendChild(labelCenter);
+            centerTable.appendChild(endSlotCenter);
+
+            const endSlotright = document.createElement('div');
+            endSlotright.className = 'slot border-hourColumnEnd';
+            const labelright = document.createElement('div');
+            labelright.className = 'time-label';
+            labelright.textContent = '23:00';
+            endSlotright.appendChild(labelright);
+            rightTable.appendChild(endSlotright);
+        }
+
+        initTimetable();
+
+        window.addEventListener('mouseup', () => isDragging = false);
+        window.addEventListener('touchend', () => isDragging = false);
+        useNumbersChk.addEventListener('change', updateOutput);
+
+        const tablesWrapper = document.querySelector('.tables-wrapper');
+        tablesWrapper.addEventListener('touchmove', (e) => {
+            if (!isDragging) return;
+            e.preventDefault();
+            const touch = e.touches[0];
+            const target = document.elementFromPoint(touch.clientX, touch.clientY);
+            if (target && target.classList.contains('cell')) {
+                handleCellAction(target, parseInt(target.dataset.index));
+            }
+        }, { passive: false });
+
+        function handleCellAction(cell, index) {
+            if (dragMode === 'add') {
+                selectedIndices.add(index);
+                cell.classList.add('selected');
+            } else {
+                selectedIndices.delete(index);
+                cell.classList.remove('selected');
+            }
+            updateOutput();
+        }
+
+        function updateOutput() {
+            const sorted = Array.from(selectedIndices).sort((a, b) => a - b);
+            if (sorted.length === 0) { outputText.value = ""; return; }
+
+            let ranges = [];
+            let start = sorted[0];
+            let prev = sorted[0];
+
+            for (let i = 1; i <= sorted.length; i++) {
+                if (sorted[i] === prev + 1) {
+                    prev = sorted[i];
+                } else {
+                    ranges.push(formatRange(start, prev));
+                    start = sorted[i];
+                    prev = sorted[i];
+                }
+            }
+
+            if (useNumbersChk.checked) {
+                ranges = ranges.map((range, index) => {
+                    const numberPrefix = circleNumbers[index] || `(${index + 1})`;
+                    return `${numberPrefix}${range}`;
+                });
+            }
+
+            outputText.value = ranges.join(', ');
+        }
+
+        function formatRange(startIdx, endIdx) {
+            return `${indexToTime(startIdx)}～${indexToTime(endIdx + 1)}`;
+        }
+
+        function indexToTime(idx) {
+            const totalMinutes = idx * interval;
+            const h = Math.floor(totalMinutes / 60);
+            const m = totalMinutes % 60;
+            return `${h}:${m.toString().padStart(2, '0')}`;
+        }
+
+        intervalSwitch.addEventListener('change', () => {
+            if (intervalSwitch.checked) {
+                interval = 10;
+                document.documentElement.style.setProperty('--slot-height', '2.4svh');
+            }
+            else {
+                interval = 5;
+                document.documentElement.style.setProperty('--slot-height', '1.2svh');
+            }
+            const allCells = document.querySelectorAll('.cell');
+            allCells.forEach(cell => cell.classList.remove('selected'));
+            selectedIndices.clear();
+            initTimetable();
+            updateOutput();
+        });
+
+        copyBtn.addEventListener('click', () => {
+            if (selectedIndices.size === 0) return;
+            navigator.clipboard.writeText(outputText.value).then(() => {
+                const toast = document.getElementById('custom-toast');
+                toast.classList.add('show');
+                setTimeout(() => {
+                    toast.classList.remove('show');
+                }, 2000);
+            });
+        });
+
+        resetBtn.addEventListener('click', () => {
+            const allCells = document.querySelectorAll('.cell');
+            allCells.forEach(cell => cell.classList.remove('selected'));
+            selectedIndices.clear();
+            updateOutput();
+        });
+    </script>
+</body>
+<div id="custom-toast" class="toast">コピーしました！</div>
+
+</html>
